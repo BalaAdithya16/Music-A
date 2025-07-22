@@ -1,0 +1,10 @@
+{
+  "name": "music-app-backend",
+  "version": "1.0.0",
+  "main": "server.js",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "4.17.3",
+    "cors": "^2.8.5"
+  }
+}
