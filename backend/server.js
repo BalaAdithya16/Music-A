@@ -1,18 +1,37 @@
+require('dotenv').config(); // Load environment variables first
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const mysql = require('mysql2/promise');
 
 const app = express();
-app.use(cors());
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
+// Security Middleware
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000' // Restrict CORS in production
+}));
+app.use(express.json()); // For parsing application/json
+
+// Database Configuration (using .env)
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || 'localhost',
+  user: process.env.DB_USER || 'root',
+  password: process.env.DB_PASSWORD, // NEVER hardcode passwords!
+  database: process.env.DB_NAME || 'music_A',
+  waitForConnections: true,
+  connectionLimit: 10,
+});
 
 // Serve static files
-app.use(express.static(path.join(__dirname, '../frontend')));
+app.use(express.static(path.join(__dirname, '../frontend'), {
+  index: false // Disable automatic index.html serving
+}));
 app.use('/songs', express.static(path.join(__dirname, 'songs')));
 
-// API Endpoints
-app.get('/api/albums', (req, res) => {
+// API Routes
+app.get('/api/albums', async (req, res) => {
   try {
     const albums = fs.readdirSync('songs').map(folder => {
       const infoPath = path.join('songs', folder, 'info.json');
@@ -29,12 +48,12 @@ app.get('/api/albums', (req, res) => {
   }
 });
 
-app.get('/api/songs/:folder', (req, res) => {
+app.get('/api/songs/:folder', async (req, res) => {
   try {
     const folderPath = path.join(__dirname, 'songs', req.params.folder);
     const songs = fs.readdirSync(folderPath)
       .filter(file => file.endsWith('.mp3'))
-      .map(song => song); // Return raw filenames
+      .map(song => song); 
     
     res.json(songs);
   } catch (err) {
@@ -43,9 +62,28 @@ app.get('/api/songs/:folder', (req, res) => {
   }
 });
 
-// Handle all routes
+// Auth Routes (imported separately)
+const authRoutes = require('./routes/auth')(pool);
+app.use('/api/auth', authRoutes);
+
+// Root route
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/signup.html'));
+});
+
+// Catch-all route
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+  if (req.path.startsWith('/api')) {
+    res.status(404).json({ error: 'API endpoint not found' });
+  } else {
+    res.sendFile(path.join(__dirname, '../frontend/signup.html'));
+  }
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Something broke!');
 });
 
 app.listen(PORT, () => {
